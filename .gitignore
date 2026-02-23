@@ -1,0 +1,4 @@
+orders.db
+node_modules/
+*.log
+.env

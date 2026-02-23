@@ -1,0 +1,266 @@
+/* =========================================================
+   OMS — Order Management System  (TCCCPR India)
+   ========================================================= */
+
+/* ── Colour palette ─────────────────────────────────────── */
+:root {
+  --oms-navy:       #1a3a5c;
+  --oms-blue:       #1d6fce;
+  --oms-blue-light: #e8f1fb;
+  --oms-teal:       #0d9488;
+  --oms-border:     #d0dae6;
+  --oms-bg:         #f0f4f8;
+  --oms-card-bg:    #ffffff;
+  --oms-text:       #1e2e3e;
+  --oms-muted:      #6b7c93;
+  --oms-highlight:  #fefce8;
+}
+
+/* ── Base ───────────────────────────────────────────────── */
+body {
+  background: var(--oms-bg);
+  color: var(--oms-text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Navbar ─────────────────────────────────────────────── */
+.navbar-oms {
+  background: linear-gradient(135deg, var(--oms-navy) 0%, #254a73 100%);
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+}
+
+.badge-tcccpr {
+  background: var(--oms-teal);
+  font-size: .72rem;
+  letter-spacing: .03em;
+  padding: .35em .65em;
+  border-radius: 4px;
+}
+
+/* ── Page icon ──────────────────────────────────────────── */
+.page-icon {
+  width: 52px;
+  height: 52px;
+  background: var(--oms-blue-light);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--oms-blue);
+  flex-shrink: 0;
+}
+
+/* ── Form cards ─────────────────────────────────────────── */
+.form-card {
+  border: 1px solid var(--oms-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+.section-header {
+  background: linear-gradient(135deg, var(--oms-navy) 0%, #2a5298 100%);
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: .65rem 1.1rem;
+  border-bottom: none;
+}
+
+.required-label::after {
+  content: " *";
+  color: #dc3545;
+}
+
+.input-group-text {
+  background: var(--oms-blue-light);
+  border-color: var(--oms-border);
+  color: var(--oms-blue);
+}
+
+.form-control,
+.form-select {
+  border-color: var(--oms-border);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--oms-blue);
+  box-shadow: 0 0 0 .2rem rgba(29,111,206,.18);
+}
+
+.btn-submit {
+  background: linear-gradient(135deg, var(--oms-blue) 0%, #1558a8 100%);
+  border: none;
+  font-weight: 600;
+}
+
+.btn-submit:hover {
+  background: linear-gradient(135deg, #1558a8 0%, var(--oms-navy) 100%);
+}
+
+/* ── Screenshot / Detail card ───────────────────────────── */
+.screenshot-card {
+  background: var(--oms-card-bg);
+  border: 1px solid var(--oms-border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+
+/* Record header */
+.record-header {
+  background: linear-gradient(135deg, var(--oms-navy) 0%, #2a5298 100%);
+  color: #fff;
+  padding: 1.5rem 1.75rem;
+}
+
+.record-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  opacity: .75;
+  margin-bottom: .25rem;
+}
+
+.record-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0;
+}
+
+.record-url {
+  font-size: .78rem;
+  opacity: .85;
+  word-break: break-all;
+}
+
+/* Section titles */
+.section-title {
+  font-size: .8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--oms-navy);
+  background: var(--oms-blue-light);
+  padding: .55rem 1.1rem;
+  border-bottom: 1px solid var(--oms-border);
+}
+
+/* Detail sections */
+.detail-section {
+  border-bottom: 1px solid var(--oms-border);
+}
+
+.detail-section:last-of-type {
+  border-bottom: none;
+}
+
+/* Cells */
+.detail-cell {
+  padding: 1rem 1.25rem;
+}
+
+.detail-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--oms-muted);
+  margin-bottom: .3rem;
+}
+
+.detail-value {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--oms-text);
+}
+
+/* ID values stand out */
+.highlight-id {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: .95rem;
+  color: var(--oms-navy);
+  font-weight: 700;
+}
+
+/* Primary date highlight */
+.highlight-primary {
+  background: var(--oms-highlight);
+}
+
+/* Date values */
+.date-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dividers within a section grid */
+.border-end-sm {
+  border-right: 1px solid var(--oms-border);
+}
+
+.border-top-divider {
+  border-top: 1px solid var(--oms-border);
+}
+
+/* Primary date badge */
+.primary-date-badge {
+  background: linear-gradient(135deg, var(--oms-teal), #0f766e);
+  font-size: .78rem;
+  padding: .38em .75em;
+  border-radius: 6px;
+}
+
+/* Recording link */
+.recording-link {
+  color: var(--oms-blue);
+  text-decoration: none;
+  font-size: .9rem;
+  word-break: break-all;
+}
+
+.recording-link:hover {
+  text-decoration: underline;
+}
+
+.recording-ref {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: .9rem;
+  color: var(--oms-muted);
+}
+
+/* Record footer */
+.record-footer {
+  background: #f7f9fc;
+  border-top: 1px solid var(--oms-border);
+  padding: .9rem 1.25rem;
+  font-size: .78rem;
+  color: var(--oms-muted);
+}
+
+/* ── Print / Screenshot overrides ───────────────────────── */
+@media print {
+  .no-print,
+  .navbar-oms {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .screenshot-card {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    border-radius: 0;
+  }
+}
+
+/* ── Responsive tweaks ──────────────────────────────────── */
+@media (max-width: 575px) {
+  .border-end-sm {
+    border-right: none;
+    border-bottom: 1px solid var(--oms-border);
+  }
+}
