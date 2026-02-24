@@ -23,6 +23,20 @@ const url    = require("node:url");
 const qs     = require("node:querystring");
 const { DatabaseSync } = require("node:sqlite");
 
+// ── Load .env file (built-in, no dotenv needed) ──────────
+const envPath = path.join(__dirname, ".env");
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx === -1) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const val = trimmed.slice(idx + 1).trim();
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
 // ── Config ────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID     || "";
