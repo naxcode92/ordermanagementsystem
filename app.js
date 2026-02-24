@@ -253,7 +253,6 @@ function baseFoot(extraJs = "") {
   return `
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="/static/js/app.js"></script>
   ${extraJs}
 </body>
@@ -601,12 +600,6 @@ function pageOrder(order, user = null) {
         <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
           <i class="bi bi-printer me-1"></i>Print
         </button>
-        <button class="btn btn-primary btn-sm" id="screenshotBtn">
-          <i class="bi bi-camera me-1"></i>Save Screenshot
-        </button>
-        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_date=${e("call_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&brand_name=${e("brand_name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
-          <i class="bi bi-pencil me-1"></i>Edit
-        </a>
       </div>
     </div>
 
@@ -680,43 +673,11 @@ function pageOrder(order, user = null) {
         ${[order.order_date, order.delivery_failure_date, order.call_date, order.call_request_date, order.last_request_date].every(d => !d) ? '<div class="text-muted text-center py-3 small">No dates recorded</div>' : ""}
       </div>
 
-      <!-- Footer stamp -->
-      <div class="record-footer">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-          <div>
-            <i class="bi bi-shield-check me-1"></i>
-            Generated for Compliance Record
-          </div>
-          <div class="text-muted small">Created: ${e("created_at")}</div>
-        </div>
-      </div>
-
     </div><!-- end screenshotTarget -->
   </div>
 </div>` + baseFoot(`
 <script>
   document.getElementById("currentUrl").textContent = window.location.href;
-
-  document.getElementById("screenshotBtn").addEventListener("click", async () => {
-    const btn       = document.getElementById("screenshotBtn");
-    const actionBar = document.getElementById("actionBar");
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Capturing…';
-    actionBar.style.visibility = "hidden";
-    try {
-      const canvas = await html2canvas(document.getElementById("screenshotTarget"), {
-        scale: 2, useCORS: true, backgroundColor: "#ffffff",
-      });
-      const link = document.createElement("a");
-      link.download = "OMS_${e("lead_id")}_${e("call_sid")}.png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } finally {
-      actionBar.style.visibility = "visible";
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-camera me-1"></i>Save Screenshot';
-    }
-  });
 </script>`);
 }
 
