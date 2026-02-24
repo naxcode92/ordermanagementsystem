@@ -67,23 +67,27 @@ db.exec(`
     last_request_date     TEXT,
     phone_number          TEXT,
     name                  TEXT,
+    brand_name            TEXT,
     call_recording        TEXT,
     created_at            TEXT DEFAULT (datetime('now')),
     UNIQUE(lead_id, call_sid)
   )
 `);
 
-// ── Migrate: add call_date column if missing ─────────────
+// ── Migrate: add new columns if missing ──────────────────
 try {
   db.exec("ALTER TABLE orders ADD COLUMN call_date TEXT");
+} catch (_) { /* column already exists */ }
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN brand_name TEXT");
 } catch (_) { /* column already exists */ }
 
 // ── Prepared statements ───────────────────────────────────
 const stmtInsert = db.prepare(`
   INSERT INTO orders
     (call_sid, lead_id, date_type, order_date, delivery_failure_date,
-     call_date, call_request_date, last_request_date, phone_number, name, call_recording)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const stmtUpdate = db.prepare(`
@@ -96,6 +100,7 @@ const stmtUpdate = db.prepare(`
     last_request_date = ?,
     phone_number = ?,
     name = ?,
+    brand_name = ?,
     call_recording = ?
   WHERE lead_id = ? AND call_sid = ?
 `);
@@ -368,6 +373,14 @@ function pageIndex(error = "", prefill = {}, user = null) {
                   placeholder="+91 9XXXXXXXXX" value="${v("phone_number")}"/>
               </div>
             </div>
+            <div class="col-md-6">
+              <label for="brand_name" class="form-label">Brand Name</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-building"></i></span>
+                <input type="text" class="form-control" id="brand_name" name="brand_name"
+                  placeholder="e.g. Acme Corp" value="${v("brand_name")}"/>
+              </div>
+            </div>
             <div class="col-12">
               <label for="call_recording" class="form-label">Call Recording URL / Reference</label>
               <div class="input-group">
@@ -591,7 +604,7 @@ function pageOrder(order, user = null) {
         <button class="btn btn-primary btn-sm" id="screenshotBtn">
           <i class="bi bi-camera me-1"></i>Save Screenshot
         </button>
-        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_date=${e("call_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
+        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_date=${e("call_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&brand_name=${e("brand_name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
           <i class="bi bi-pencil me-1"></i>Edit
         </a>
       </div>
@@ -643,7 +656,11 @@ function pageOrder(order, user = null) {
             <div class="detail-label"><i class="bi bi-phone me-1"></i>Phone Number</div>
             <div class="detail-value">${e("phone_number") || "—"}</div>
           </div>
-          <div class="col-12 detail-cell border-top-divider">
+          <div class="col-sm-6 detail-cell border-top-divider">
+            <div class="detail-label"><i class="bi bi-building me-1"></i>Brand Name</div>
+            <div class="detail-value">${e("brand_name") || "—"}</div>
+          </div>
+          <div class="col-sm-6 detail-cell border-top-divider">
             <div class="detail-label"><i class="bi bi-mic-fill me-1"></i>Call Recording</div>
             <div class="detail-value">${recHtml}</div>
           </div>
@@ -653,10 +670,6 @@ function pageOrder(order, user = null) {
       <!-- Dates -->
       <div class="detail-section">
         <div class="section-title"><i class="bi bi-calendar3 me-2"></i>Date Information</div>
-        ${dt ? `<div class="px-3 pb-2">
-          <span class="badge primary-date-badge">
-            <i class="bi bi-tag-fill me-1"></i>Primary Type: ${esc(dt)}
-          </span></div>` : ""}
         <div class="row g-0">
           ${dateCell("Order Date",            "bi-cart-check",         "order_date",            dt === "Order Date")}
           ${dateCell("Delivery Failure Date", "bi-truck",              "delivery_failure_date", dt === "Delivery Failure Date")}
@@ -882,6 +895,7 @@ const server = http.createServer((req, res) => {
       const last_request_date     = trim("last_request_date");
       const phone_number          = trim("phone_number");
       const name                  = trim("name");
+      const brand_name            = trim("brand_name");
       const call_recording        = trim("call_recording");
 
       if (!call_sid || !lead_id) {
@@ -893,13 +907,13 @@ const server = http.createServer((req, res) => {
       try {
         stmtInsert.run(
           call_sid, lead_id, date_type, order_date, delivery_failure_date,
-          call_date, call_request_date, last_request_date, phone_number, name, call_recording
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording
         );
       } catch (e) {
         // Duplicate — update instead
         stmtUpdate.run(
           date_type, order_date, delivery_failure_date,
-          call_date, call_request_date, last_request_date, phone_number, name, call_recording,
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording,
           lead_id, call_sid
         );
       }

@@ -20,6 +20,7 @@ window.addEventListener("DOMContentLoaded", () => {
     "last_request_date",
     "phone_number",
     "name",
+    "brand_name",
     "call_recording",
   ];
 
