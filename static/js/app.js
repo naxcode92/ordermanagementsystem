@@ -15,6 +15,7 @@ window.addEventListener("DOMContentLoaded", () => {
     "date_type",
     "order_date",
     "delivery_failure_date",
+    "call_date",
     "call_request_date",
     "last_request_date",
     "phone_number",
