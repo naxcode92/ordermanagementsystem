@@ -5,19 +5,35 @@
  *
  * Run:  node app.js
  * Open: http://localhost:3000
+ *
+ * Required env vars for Google SSO:
+ *   GOOGLE_CLIENT_ID
+ *   GOOGLE_CLIENT_SECRET
+ *   BASE_URL  (e.g. http://localhost:3000  or  https://yourdomain.com)
  */
 
 "use strict";
 
-const http = require("node:http");
-const path = require("node:path");
-const fs   = require("node:fs");
-const url  = require("node:url");
-const qs   = require("node:querystring");
+const http   = require("node:http");
+const https  = require("node:https");
+const crypto = require("node:crypto");
+const path   = require("node:path");
+const fs     = require("node:fs");
+const url    = require("node:url");
+const qs     = require("node:querystring");
 const { DatabaseSync } = require("node:sqlite");
 
 // ── Config ────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID     || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const BASE_URL             = process.env.BASE_URL             || `http://localhost:${PORT}`;
+const GOOGLE_REDIRECT_URI  = `${BASE_URL}/auth/google/callback`;
+const ALLOWED_DOMAIN       = "futwork.com";
+
+// ── Session store (in-memory) ────────────────────────────
+const sessions = new Map();          // sessionId → { email, name, picture, expiresAt }
+const SESSION_MAX_AGE = 24 * 60 * 60 * 1000;  // 24 hours
 const DB_PATH = path.join(__dirname, "orders.db");
 const STATIC_DIR = path.join(__dirname, "static");
 
@@ -80,6 +96,89 @@ const MIME = {
   ".html": "text/html",
 };
 
+// ── Session helpers ───────────────────────────────────────
+function createSession(data) {
+  const id = crypto.randomBytes(32).toString("hex");
+  sessions.set(id, { ...data, expiresAt: Date.now() + SESSION_MAX_AGE });
+  return id;
+}
+
+function getSession(req) {
+  const cookieHeader = req.headers.cookie || "";
+  const match = cookieHeader.match(/(?:^|;\s*)oms_session=([a-f0-9]{64})/);
+  if (!match) return null;
+  const sess = sessions.get(match[1]);
+  if (!sess) return null;
+  if (sess.expiresAt < Date.now()) { sessions.delete(match[1]); return null; }
+  return sess;
+}
+
+function sessionCookie(sessionId) {
+  return `oms_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE / 1000}`;
+}
+
+function clearSessionCookie() {
+  return "oms_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+}
+
+// ── Google OAuth helpers ─────────────────────────────────
+function httpsJson(urlStr, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const opts = {
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: options.method || "GET",
+      headers: options.headers || {},
+    };
+    const req = https.request(opts, (res) => {
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        try { resolve(JSON.parse(body)); }
+        catch { resolve(body); }
+      });
+    });
+    req.on("error", reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+function googleAuthUrl() {
+  const params = qs.stringify({
+    client_id:     GOOGLE_CLIENT_ID,
+    redirect_uri:  GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope:         "openid email profile",
+    access_type:   "online",
+    prompt:        "select_account",
+    hd:            ALLOWED_DOMAIN,  // hint to show only futwork.com accounts
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+async function exchangeCode(code) {
+  const body = qs.stringify({
+    code,
+    client_id:     GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri:  GOOGLE_REDIRECT_URI,
+    grant_type:    "authorization_code",
+  });
+  return httpsJson("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+}
+
+async function getUserInfo(accessToken) {
+  return httpsJson(
+    `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${accessToken}`
+  );
+}
+
 // ── HTML helpers ──────────────────────────────────────────
 function esc(s) {
   if (s === null || s === undefined) return "";
@@ -91,7 +190,14 @@ function esc(s) {
     .replace(/'/g, "&#039;");
 }
 
-function baseHead(title) {
+function baseHead(title, user) {
+  const userHtml = user ? `
+      <div class="d-flex align-items-center gap-2 ms-3">
+        ${user.picture ? `<img src="${esc(user.picture)}" alt="" width="28" height="28" class="rounded-circle" referrerpolicy="no-referrer"/>` : ""}
+        <span class="text-white-50 small d-none d-md-inline">${esc(user.email)}</span>
+        <a href="/logout" class="btn btn-outline-light btn-sm py-0 px-2" style="font-size:.75rem;">Sign out</a>
+      </div>` : "";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -108,7 +214,10 @@ function baseHead(title) {
       <i class="bi bi-box-seam-fill fs-4"></i>
       <span class="fw-bold">Order Management System</span>
     </a>
-    <span class="badge badge-tcccpr ms-auto">TCCCPR Compliant</span>
+    <div class="d-flex align-items-center">
+      <span class="badge badge-tcccpr">TCCCPR Compliant</span>
+      ${userHtml}
+    </div>
   </nav>
   <div class="container-lg py-4">`;
 }
@@ -124,13 +233,54 @@ function baseFoot(extraJs = "") {
 </html>`;
 }
 
+// ── Page: Login ───────────────────────────────────────────
+function pageLogin(error = "") {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sign In — Order Management System</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+  <nav class="navbar navbar-dark navbar-oms px-4">
+    <span class="navbar-brand d-flex align-items-center gap-2">
+      <i class="bi bi-box-seam-fill fs-4"></i>
+      <span class="fw-bold">Order Management System</span>
+    </span>
+    <span class="badge badge-tcccpr ms-auto">TCCCPR Compliant</span>
+  </nav>
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-sm-8 col-md-5 col-lg-4">
+        <div class="card form-card text-center p-4">
+          <div class="page-icon mx-auto mb-3"><i class="bi bi-shield-lock fs-3"></i></div>
+          <h2 class="h4 fw-bold mb-1">Sign In</h2>
+          <p class="text-muted small mb-4">Use your <strong>futwork.com</strong> Google account to continue.</p>
+          ${error ? `<div class="alert alert-danger small py-2 mb-3"><i class="bi bi-exclamation-triangle-fill me-1"></i>${esc(error)}</div>` : ""}
+          <a href="/auth/google" class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 py-2">
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.28-3.14.76-4.59l-7.98-6.19A23.998 23.998 0 0 0 0 24c0 3.77.9 7.35 2.56 10.52l7.97-5.93z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 5.93C6.51 42.62 14.62 48 24 48z"/></svg>
+            Sign in with Google
+          </a>
+          <p class="text-muted small mt-3 mb-0">Only <code>@futwork.com</code> email addresses are allowed.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 // ── Page: Input form ──────────────────────────────────────
-function pageIndex(error = "", prefill = {}) {
+function pageIndex(error = "", prefill = {}, user = null) {
   const v = (k) => esc(prefill[k] || "");
   const sel = (opt) =>
     prefill.date_type === opt ? ' selected' : '';
 
-  return baseHead("New Order Entry — OMS") + `
+  return baseHead("New Order Entry — OMS", user) + `
 <div class="row justify-content-center">
   <div class="col-lg-8 col-xl-7">
     <div class="d-flex align-items-center mb-4 gap-3">
@@ -306,7 +456,7 @@ function pageIndex(error = "", prefill = {}) {
 }
 
 // ── Page: Order detail ────────────────────────────────────
-function pageOrder(order) {
+function pageOrder(order, user = null) {
   const e = (k) => esc(order[k]);
 
   function dateCell(label, icon, field, isHighlight) {
@@ -329,7 +479,7 @@ function pageOrder(order) {
       : `<span class="recording-ref">${esc(rec)}</span>`
     : "—";
 
-  return baseHead(`${order.name || order.lead_id} — Order Record`) + `
+  return baseHead(`${order.name || order.lead_id} — Order Record`, user) + `
 <div class="row justify-content-center">
   <div class="col-lg-9 col-xl-8">
 
@@ -461,8 +611,8 @@ function pageOrder(order) {
 }
 
 // ── Page: 404 ─────────────────────────────────────────────
-function page404(leadId, callSid) {
-  return baseHead("Record Not Found — OMS") + `
+function page404(leadId, callSid, user = null) {
+  return baseHead("Record Not Found — OMS", user) + `
 <div class="row justify-content-center text-center py-5">
   <div class="col-md-6">
     <div class="display-1 text-muted mb-3">404</div>
@@ -485,7 +635,7 @@ const server = http.createServer((req, res) => {
   const pathname = parsed.pathname;
   const method   = req.method.toUpperCase();
 
-  // Static files
+  // ── Static files (public, no auth needed) ──────────────
   if (pathname.startsWith("/static/")) {
     const filePath = path.join(STATIC_DIR, pathname.slice("/static/".length));
     const ext = path.extname(filePath);
@@ -501,6 +651,104 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Auth routes (public) ───────────────────────────────
+
+  // GET /login — show login page
+  if (pathname === "/login" && method === "GET") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(pageLogin());
+    return;
+  }
+
+  // GET /auth/google — redirect to Google consent screen
+  if (pathname === "/auth/google" && method === "GET") {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(pageLogin("Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars."));
+      return;
+    }
+    res.writeHead(302, { Location: googleAuthUrl() });
+    res.end();
+    return;
+  }
+
+  // GET /auth/google/callback — handle OAuth callback
+  if (pathname === "/auth/google/callback" && method === "GET") {
+    const code  = parsed.query.code;
+    const error = parsed.query.error;
+
+    if (error || !code) {
+      res.writeHead(302, { Location: "/login" });
+      res.end();
+      return;
+    }
+
+    (async () => {
+      try {
+        const tokenData = await exchangeCode(code);
+        if (tokenData.error) {
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(pageLogin("Authentication failed. Please try again."));
+          return;
+        }
+
+        const userInfo = await getUserInfo(tokenData.access_token);
+        if (!userInfo.email) {
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(pageLogin("Could not retrieve your email. Please try again."));
+          return;
+        }
+
+        // Enforce @futwork.com domain
+        const emailDomain = userInfo.email.split("@")[1];
+        if (emailDomain !== ALLOWED_DOMAIN) {
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(pageLogin(`Access denied. Only @${ALLOWED_DOMAIN} accounts are allowed. You signed in as ${userInfo.email}.`));
+          return;
+        }
+
+        // Create session and set cookie
+        const sessionId = createSession({
+          email:   userInfo.email,
+          name:    userInfo.name || "",
+          picture: userInfo.picture || "",
+        });
+        res.writeHead(302, {
+          Location: "/",
+          "Set-Cookie": sessionCookie(sessionId),
+        });
+        res.end();
+      } catch (err) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(pageLogin("An error occurred during authentication. Please try again."));
+      }
+    })();
+    return;
+  }
+
+  // GET /logout — destroy session
+  if (pathname === "/logout" && method === "GET") {
+    const cookieHeader = req.headers.cookie || "";
+    const match = cookieHeader.match(/(?:^|;\s*)oms_session=([a-f0-9]{64})/);
+    if (match) sessions.delete(match[1]);
+    res.writeHead(302, {
+      Location: "/login",
+      "Set-Cookie": clearSessionCookie(),
+    });
+    res.end();
+    return;
+  }
+
+  // ── Auth guard — all routes below require login ────────
+  const user = getSession(req);
+  if (!user) {
+    res.writeHead(302, { Location: "/login" });
+    res.end();
+    return;
+  }
+
+  // ── Protected routes ───────────────────────────────────
+
   // GET / — input form
   if (pathname === "/" && method === "GET") {
     const prefill = {};
@@ -508,7 +756,7 @@ const server = http.createServer((req, res) => {
       prefill[k] = v;
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(pageIndex("", prefill));
+    res.end(pageIndex("", prefill, user));
     return;
   }
 
@@ -533,7 +781,7 @@ const server = http.createServer((req, res) => {
 
       if (!call_sid || !lead_id) {
         res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(pageIndex("Call SID and Lead ID are required.", data));
+        res.end(pageIndex("Call SID and Lead ID are required.", data, user));
         return;
       }
 
@@ -573,17 +821,17 @@ const server = http.createServer((req, res) => {
     const order   = stmtSelect.get(leadId, callSid);
     if (!order) {
       res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(page404(leadId, callSid));
+      res.end(page404(leadId, callSid, user));
       return;
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(pageOrder(order));
+    res.end(pageOrder(order, user));
     return;
   }
 
   // Default 404
   res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(page404("", ""));
+  res.end(page404("", "", user));
 });
 
 server.listen(PORT, () => {
