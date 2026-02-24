@@ -1,5 +1,5 @@
 /**
- * Order Management System — TCCCPR India
+ * Order Management System
  * Pure Node.js server (no external dependencies)
  * Node v22+ built-in sqlite (node:sqlite)
  *
@@ -62,22 +62,32 @@ db.exec(`
     date_type             TEXT,
     order_date            TEXT,
     delivery_failure_date TEXT,
+    call_date             TEXT,
     call_request_date     TEXT,
     last_request_date     TEXT,
     phone_number          TEXT,
     name                  TEXT,
+    brand_name            TEXT,
     call_recording        TEXT,
     created_at            TEXT DEFAULT (datetime('now')),
     UNIQUE(lead_id, call_sid)
   )
 `);
 
+// ── Migrate: add new columns if missing ──────────────────
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN call_date TEXT");
+} catch (_) { /* column already exists */ }
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN brand_name TEXT");
+} catch (_) { /* column already exists */ }
+
 // ── Prepared statements ───────────────────────────────────
 const stmtInsert = db.prepare(`
   INSERT INTO orders
     (call_sid, lead_id, date_type, order_date, delivery_failure_date,
-     call_request_date, last_request_date, phone_number, name, call_recording)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const stmtUpdate = db.prepare(`
@@ -85,10 +95,12 @@ const stmtUpdate = db.prepare(`
     date_type = ?,
     order_date = ?,
     delivery_failure_date = ?,
+    call_date = ?,
     call_request_date = ?,
     last_request_date = ?,
     phone_number = ?,
     name = ?,
+    brand_name = ?,
     call_recording = ?
   WHERE lead_id = ? AND call_sid = ?
 `);
@@ -230,7 +242,7 @@ function baseHead(title, user) {
       <span class="fw-bold">Order Management System</span>
     </a>
     <div class="d-flex align-items-center">
-      <span class="badge badge-tcccpr">TCCCPR Compliant</span>
+      <span class="badge badge-oms">Order Management</span>
       ${userHtml}
     </div>
   </nav>
@@ -266,7 +278,7 @@ function pageLogin(error = "") {
       <i class="bi bi-box-seam-fill fs-4"></i>
       <span class="fw-bold">Order Management System</span>
     </span>
-    <span class="badge badge-tcccpr ms-auto">TCCCPR Compliant</span>
+    <span class="badge badge-oms ms-auto">Order Management</span>
   </nav>
   <div class="container py-5">
     <div class="row justify-content-center">
@@ -302,7 +314,7 @@ function pageIndex(error = "", prefill = {}, user = null) {
       <div class="page-icon"><i class="bi bi-pencil-square fs-3"></i></div>
       <div>
         <h1 class="h3 mb-0 fw-bold">New Order Entry</h1>
-        <p class="text-muted mb-0 small">Enter order details for TCCCPR compliance record</p>
+        <p class="text-muted mb-0 small">Enter order details for compliance record</p>
       </div>
     </div>
     ${error ? `<div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
@@ -361,6 +373,14 @@ function pageIndex(error = "", prefill = {}, user = null) {
                   placeholder="+91 9XXXXXXXXX" value="${v("phone_number")}"/>
               </div>
             </div>
+            <div class="col-md-6">
+              <label for="brand_name" class="form-label">Brand Name</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-building"></i></span>
+                <input type="text" class="form-control" id="brand_name" name="brand_name"
+                  placeholder="e.g. Acme Corp" value="${v("brand_name")}"/>
+              </div>
+            </div>
             <div class="col-12">
               <label for="call_recording" class="form-label">Call Recording URL / Reference</label>
               <div class="input-group">
@@ -389,11 +409,12 @@ function pageIndex(error = "", prefill = {}, user = null) {
                   <option value="">-- Select primary date type --</option>
                   <option value="Order Date"${sel("Order Date")}>Order Date</option>
                   <option value="Delivery Failure Date"${sel("Delivery Failure Date")}>Delivery Failure Date</option>
+                  <option value="Call Date"${sel("Call Date")}>Call Date</option>
                   <option value="Call Request Date"${sel("Call Request Date")}>Call Request Date</option>
                   <option value="Last Request Date"${sel("Last Request Date")}>Last Request Date</option>
                 </select>
               </div>
-              <div class="form-text">Select the most relevant date type for this TCCCPR record.</div>
+              <div class="form-text">Select the most relevant date type for this record.</div>
             </div>
             <div class="col-md-6">
               <label for="order_date" class="form-label">Order Date</label>
@@ -409,6 +430,14 @@ function pageIndex(error = "", prefill = {}, user = null) {
                 <span class="input-group-text"><i class="bi bi-truck"></i></span>
                 <input type="date" class="form-control date-field" id="delivery_failure_date"
                   name="delivery_failure_date" value="${v("delivery_failure_date")}"/>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label for="call_date" class="form-label">Call Date</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-telephone-outbound"></i></span>
+                <input type="date" class="form-control date-field" id="call_date"
+                  name="call_date" value="${v("call_date")}"/>
               </div>
             </div>
             <div class="col-md-6">
@@ -455,6 +484,7 @@ function pageIndex(error = "", prefill = {}, user = null) {
     const dateMap = {
       "Order Date": "order_date",
       "Delivery Failure Date": "delivery_failure_date",
+      "Call Date": "call_date",
       "Call Request Date": "call_request_date",
       "Last Request Date": "last_request_date",
     };
@@ -538,7 +568,8 @@ function pageOrder(order, user = null) {
   const e = (k) => esc(order[k]);
 
   function dateCell(label, icon, field, isHighlight) {
-    const val = order[field] || "—";
+    const val = order[field];
+    if (!val) return "";  // only show dates that have values
     const star = isHighlight
       ? ' <i class="bi bi-star-fill ms-1 text-warning small"></i>'
       : "";
@@ -573,7 +604,7 @@ function pageOrder(order, user = null) {
         <button class="btn btn-primary btn-sm" id="screenshotBtn">
           <i class="bi bi-camera me-1"></i>Save Screenshot
         </button>
-        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
+        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_date=${e("call_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&brand_name=${e("brand_name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
           <i class="bi bi-pencil me-1"></i>Edit
         </a>
       </div>
@@ -586,7 +617,7 @@ function pageOrder(order, user = null) {
       <div class="record-header">
         <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
           <div>
-            <div class="record-label">TCCCPR Order Record</div>
+            <div class="record-label">Order Record</div>
             <h2 class="record-title">${e("name") || "—"}</h2>
           </div>
           <div class="text-end">
@@ -625,7 +656,11 @@ function pageOrder(order, user = null) {
             <div class="detail-label"><i class="bi bi-phone me-1"></i>Phone Number</div>
             <div class="detail-value">${e("phone_number") || "—"}</div>
           </div>
-          <div class="col-12 detail-cell border-top-divider">
+          <div class="col-sm-6 detail-cell border-top-divider">
+            <div class="detail-label"><i class="bi bi-building me-1"></i>Brand Name</div>
+            <div class="detail-value">${e("brand_name") || "—"}</div>
+          </div>
+          <div class="col-sm-6 detail-cell border-top-divider">
             <div class="detail-label"><i class="bi bi-mic-fill me-1"></i>Call Recording</div>
             <div class="detail-value">${recHtml}</div>
           </div>
@@ -635,16 +670,14 @@ function pageOrder(order, user = null) {
       <!-- Dates -->
       <div class="detail-section">
         <div class="section-title"><i class="bi bi-calendar3 me-2"></i>Date Information</div>
-        ${dt ? `<div class="px-3 pb-2">
-          <span class="badge primary-date-badge">
-            <i class="bi bi-tag-fill me-1"></i>Primary Type: ${esc(dt)}
-          </span></div>` : ""}
         <div class="row g-0">
           ${dateCell("Order Date",            "bi-cart-check",         "order_date",            dt === "Order Date")}
           ${dateCell("Delivery Failure Date", "bi-truck",              "delivery_failure_date", dt === "Delivery Failure Date")}
+          ${dateCell("Call Date",             "bi-telephone-outbound", "call_date",             dt === "Call Date")}
           ${dateCell("Call Request Date",     "bi-telephone-inbound",  "call_request_date",     dt === "Call Request Date")}
           ${dateCell("Last Request Date",     "bi-calendar-check",     "last_request_date",     dt === "Last Request Date")}
         </div>
+        ${[order.order_date, order.delivery_failure_date, order.call_date, order.call_request_date, order.last_request_date].every(d => !d) ? '<div class="text-muted text-center py-3 small">No dates recorded</div>' : ""}
       </div>
 
       <!-- Footer stamp -->
@@ -652,8 +685,7 @@ function pageOrder(order, user = null) {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div>
             <i class="bi bi-shield-check me-1"></i>
-            Generated for TCCCPR Compliance — Telecom Commercial Communications
-            Customer Preference Regulations, India
+            Generated for Compliance Record
           </div>
           <div class="text-muted small">Created: ${e("created_at")}</div>
         </div>
@@ -676,7 +708,7 @@ function pageOrder(order, user = null) {
         scale: 2, useCORS: true, backgroundColor: "#ffffff",
       });
       const link = document.createElement("a");
-      link.download = "TCCCPR_${e("lead_id")}_${e("call_sid")}.png";
+      link.download = "OMS_${e("lead_id")}_${e("call_sid")}.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
     } finally {
@@ -858,10 +890,12 @@ const server = http.createServer((req, res) => {
       const date_type  = trim("date_type");
       const order_date            = trim("order_date");
       const delivery_failure_date = trim("delivery_failure_date");
+      const call_date             = trim("call_date");
       const call_request_date     = trim("call_request_date");
       const last_request_date     = trim("last_request_date");
       const phone_number          = trim("phone_number");
       const name                  = trim("name");
+      const brand_name            = trim("brand_name");
       const call_recording        = trim("call_recording");
 
       if (!call_sid || !lead_id) {
@@ -873,13 +907,13 @@ const server = http.createServer((req, res) => {
       try {
         stmtInsert.run(
           call_sid, lead_id, date_type, order_date, delivery_failure_date,
-          call_request_date, last_request_date, phone_number, name, call_recording
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording
         );
       } catch (e) {
         // Duplicate — update instead
         stmtUpdate.run(
           date_type, order_date, delivery_failure_date,
-          call_request_date, last_request_date, phone_number, name, call_recording,
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording,
           lead_id, call_sid
         );
       }
@@ -922,7 +956,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════════════╗
-║   Order Management System — TCCCPR India     ║
+║   Order Management System                    ║
 ║   http://localhost:${PORT}                      ║
 ╚══════════════════════════════════════════════╝
   `);

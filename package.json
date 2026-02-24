@@ -1,7 +1,7 @@
 {
   "name": "order-management-system",
   "version": "1.0.0",
-  "description": "TCCCPR-compliant Order Management System for India",
+  "description": "Order Management System",
   "main": "app.js",
   "scripts": {
     "start": "node app.js"

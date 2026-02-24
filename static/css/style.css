@@ -1,5 +1,5 @@
 /* =========================================================
-   OMS — Order Management System  (TCCCPR India)
+   OMS — Order Management System
    ========================================================= */
 
 /* ── Colour palette ─────────────────────────────────────── */
@@ -29,7 +29,7 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,.18);
 }
 
-.badge-tcccpr {
+.badge-oms {
   background: var(--oms-teal);
   font-size: .72rem;
   letter-spacing: .03em;
