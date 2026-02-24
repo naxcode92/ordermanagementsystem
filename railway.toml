@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "node app.js"
+healthcheckPath = "/login"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

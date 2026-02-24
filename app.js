@@ -206,7 +206,8 @@ function esc(s) {
 
 function baseHead(title, user) {
   const userHtml = user ? `
-      <div class="d-flex align-items-center gap-2 ms-3">
+      <a href="/orders" class="btn btn-outline-light btn-sm py-0 px-2 ms-3" style="font-size:.75rem;"><i class="bi bi-list-ul me-1"></i>All Orders</a>
+      <div class="d-flex align-items-center gap-2 ms-2">
         ${user.picture ? `<img src="${esc(user.picture)}" alt="" width="28" height="28" class="rounded-circle" referrerpolicy="no-referrer"/>` : ""}
         <span class="text-white-50 small d-none d-md-inline">${esc(user.email)}</span>
         <a href="/logout" class="btn btn-outline-light btn-sm py-0 px-2" style="font-size:.75rem;">Sign out</a>
@@ -466,6 +467,69 @@ function pageIndex(error = "", prefill = {}, user = null) {
       }
     });
   })();
+</script>`);
+}
+
+// ── Page: Dashboard (order list) ──────────────────────────
+function pageDashboard(user) {
+  const rows = stmtList.all();
+  let tableRows = "";
+  if (rows.length === 0) {
+    tableRows = `<tr><td colspan="5" class="text-center text-muted py-4">No orders yet. <a href="/">Create your first record.</a></td></tr>`;
+  } else {
+    for (const r of rows) {
+      tableRows += `
+      <tr>
+        <td><a href="/${encodeURIComponent(r.lead_id)}/${encodeURIComponent(r.call_sid)}" class="fw-semibold text-decoration-none">${esc(r.lead_id)}</a></td>
+        <td><span class="text-muted font-monospace small">${esc(r.call_sid)}</span></td>
+        <td>${esc(r.name) || '<span class="text-muted">—</span>'}</td>
+        <td>${esc(r.phone_number) || '<span class="text-muted">—</span>'}</td>
+        <td class="text-muted small">${esc(r.created_at)}</td>
+      </tr>`;
+    }
+  }
+
+  return baseHead("All Orders — OMS", user) + `
+<div class="row justify-content-center">
+  <div class="col-lg-11 col-xl-10">
+    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
+      <div class="page-icon"><i class="bi bi-list-ul fs-3"></i></div>
+      <div>
+        <h1 class="h3 mb-0 fw-bold">All Orders</h1>
+        <p class="text-muted mb-0 small">${rows.length} record${rows.length !== 1 ? "s" : ""} total</p>
+      </div>
+      <a href="/" class="btn btn-primary btn-sm ms-auto"><i class="bi bi-plus-circle me-1"></i>New Entry</a>
+    </div>
+
+    <div class="card form-card">
+      <div class="card-header section-header d-flex align-items-center gap-2">
+        <i class="bi bi-table me-1"></i>Order Records
+        <input type="text" id="dashSearch" class="form-control form-control-sm ms-auto" style="max-width:260px;background:#fff;color:#333;" placeholder="Search orders..."/>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle" id="ordersTable">
+          <thead class="table-light">
+            <tr>
+              <th>Lead ID</th>
+              <th>Call SID</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>` + baseFoot(`
+<script>
+  document.getElementById("dashSearch").addEventListener("input", function() {
+    const q = this.value.toLowerCase();
+    for (const row of document.querySelectorAll("#ordersTable tbody tr")) {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+    }
+  });
 </script>`);
 }
 
@@ -762,6 +826,13 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Protected routes ───────────────────────────────────
+
+  // GET /orders — dashboard list
+  if (pathname === "/orders" && method === "GET") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(pageDashboard(user));
+    return;
+  }
 
   // GET / — input form
   if (pathname === "/" && method === "GET") {
