@@ -239,6 +239,74 @@ body {
   color: var(--oms-muted);
 }
 
+/* ── Brand logo upload ─────────────────────────────────── */
+.logo-upload-area {
+  border: 2px dashed var(--oms-border);
+  border-radius: 10px;
+  padding: .75rem;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-upload-area:hover {
+  border-color: var(--oms-blue);
+  background: var(--oms-blue-light);
+}
+
+.logo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .25rem;
+}
+
+.logo-preview-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-preview-container img {
+  max-height: 64px;
+  max-width: 180px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.logo-remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .6rem;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* ── Brand logo in record header ──────────────────────── */
+.record-logo {
+  margin: .5rem 0;
+}
+
+.record-logo img {
+  max-height: 56px;
+  max-width: 200px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(255,255,255,.15);
+  padding: 4px;
+}
+
 /* ── Print / Screenshot overrides ───────────────────────── */
 @media print {
   .no-print,
