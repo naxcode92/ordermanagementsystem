@@ -81,13 +81,16 @@ try {
 try {
   db.exec("ALTER TABLE orders ADD COLUMN brand_name TEXT");
 } catch (_) { /* column already exists */ }
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN brand_logo TEXT");
+} catch (_) { /* column already exists */ }
 
 // ── Prepared statements ───────────────────────────────────
 const stmtInsert = db.prepare(`
   INSERT INTO orders
     (call_sid, lead_id, date_type, order_date, delivery_failure_date,
-     call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     call_date, call_request_date, last_request_date, phone_number, name, brand_name, brand_logo, call_recording)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const stmtUpdate = db.prepare(`
@@ -101,6 +104,7 @@ const stmtUpdate = db.prepare(`
     phone_number = ?,
     name = ?,
     brand_name = ?,
+    brand_logo = ?,
     call_recording = ?
   WHERE lead_id = ? AND call_sid = ?
 `);
@@ -253,7 +257,6 @@ function baseFoot(extraJs = "") {
   return `
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="/static/js/app.js"></script>
   ${extraJs}
 </body>
@@ -381,6 +384,24 @@ function pageIndex(error = "", prefill = {}, user = null) {
                   placeholder="e.g. Acme Corp" value="${v("brand_name")}"/>
               </div>
             </div>
+            <div class="col-md-6">
+              <label for="brand_logo_file" class="form-label">Brand Logo</label>
+              <div class="logo-upload-area" id="logoUploadArea">
+                <input type="file" class="form-control" id="brand_logo_file" accept="image/*" style="display:none"/>
+                <input type="hidden" id="brand_logo" name="brand_logo" value="${v("brand_logo")}"/>
+                <div id="logoPreview" class="logo-preview-container" style="display:none;">
+                  <img id="logoPreviewImg" alt="Logo preview"/>
+                  <button type="button" class="btn btn-sm btn-outline-danger logo-remove-btn" id="logoRemoveBtn">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+                <div id="logoPlaceholder" class="logo-placeholder">
+                  <i class="bi bi-image fs-4 text-muted"></i>
+                  <span class="small text-muted">Click to upload logo</span>
+                  <span class="text-muted" style="font-size:.7rem;">Max 500 KB &bull; PNG, JPG, SVG</span>
+                </div>
+              </div>
+            </div>
             <div class="col-12">
               <label for="call_recording" class="form-label">Call Recording URL / Reference</label>
               <div class="input-group">
@@ -496,6 +517,57 @@ function pageIndex(error = "", prefill = {}, user = null) {
         el.focus();
       }
     });
+
+    // ── Logo upload ──
+    const logoArea = document.getElementById("logoUploadArea");
+    const logoFile = document.getElementById("brand_logo_file");
+    const logoHidden = document.getElementById("brand_logo");
+    const logoPreview = document.getElementById("logoPreview");
+    const logoPreviewImg = document.getElementById("logoPreviewImg");
+    const logoPlaceholder = document.getElementById("logoPlaceholder");
+    const logoRemoveBtn = document.getElementById("logoRemoveBtn");
+
+    function showLogoPreview(dataUrl) {
+      logoPreviewImg.src = dataUrl;
+      logoPreview.style.display = "";
+      logoPlaceholder.style.display = "none";
+    }
+
+    function clearLogo() {
+      logoHidden.value = "";
+      logoFile.value = "";
+      logoPreview.style.display = "none";
+      logoPlaceholder.style.display = "";
+    }
+
+    // If pre-filled (edit flow), show preview
+    if (logoHidden.value) showLogoPreview(logoHidden.value);
+
+    logoArea.addEventListener("click", (e) => {
+      if (e.target.closest("#logoRemoveBtn")) return;
+      logoFile.click();
+    });
+
+    logoFile.addEventListener("change", () => {
+      const file = logoFile.files[0];
+      if (!file) return;
+      if (file.size > 512000) {
+        alert("Logo file must be under 500 KB.");
+        logoFile.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        logoHidden.value = reader.result;
+        showLogoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    logoRemoveBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      clearLogo();
+    });
   })();
 </script>`);
 }
@@ -601,12 +673,6 @@ function pageOrder(order, user = null) {
         <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
           <i class="bi bi-printer me-1"></i>Print
         </button>
-        <button class="btn btn-primary btn-sm" id="screenshotBtn">
-          <i class="bi bi-camera me-1"></i>Save Screenshot
-        </button>
-        <a href="/?lead_id=${e("lead_id")}&call_sid=${e("call_sid")}&date_type=${encodeURIComponent(dt)}&order_date=${e("order_date")}&delivery_failure_date=${e("delivery_failure_date")}&call_date=${e("call_date")}&call_request_date=${e("call_request_date")}&last_request_date=${e("last_request_date")}&phone_number=${e("phone_number")}&name=${e("name")}&brand_name=${e("brand_name")}&call_recording=${e("call_recording")}" class="btn btn-outline-warning btn-sm">
-          <i class="bi bi-pencil me-1"></i>Edit
-        </a>
       </div>
     </div>
 
@@ -618,6 +684,7 @@ function pageOrder(order, user = null) {
         <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
           <div>
             <div class="record-label">Order Record</div>
+            ${order.brand_logo ? `<div class="record-logo"><img src="${esc(order.brand_logo)}" alt="${esc(order.brand_name || 'Brand logo')}"/></div>` : ""}
             <h2 class="record-title">${e("name") || "—"}</h2>
           </div>
           <div class="text-end">
@@ -680,43 +747,11 @@ function pageOrder(order, user = null) {
         ${[order.order_date, order.delivery_failure_date, order.call_date, order.call_request_date, order.last_request_date].every(d => !d) ? '<div class="text-muted text-center py-3 small">No dates recorded</div>' : ""}
       </div>
 
-      <!-- Footer stamp -->
-      <div class="record-footer">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-          <div>
-            <i class="bi bi-shield-check me-1"></i>
-            Generated for Compliance Record
-          </div>
-          <div class="text-muted small">Created: ${e("created_at")}</div>
-        </div>
-      </div>
-
     </div><!-- end screenshotTarget -->
   </div>
 </div>` + baseFoot(`
 <script>
   document.getElementById("currentUrl").textContent = window.location.href;
-
-  document.getElementById("screenshotBtn").addEventListener("click", async () => {
-    const btn       = document.getElementById("screenshotBtn");
-    const actionBar = document.getElementById("actionBar");
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Capturing…';
-    actionBar.style.visibility = "hidden";
-    try {
-      const canvas = await html2canvas(document.getElementById("screenshotTarget"), {
-        scale: 2, useCORS: true, backgroundColor: "#ffffff",
-      });
-      const link = document.createElement("a");
-      link.download = "OMS_${e("lead_id")}_${e("call_sid")}.png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } finally {
-      actionBar.style.visibility = "visible";
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-camera me-1"></i>Save Screenshot';
-    }
-  });
 </script>`);
 }
 
@@ -879,9 +914,19 @@ const server = http.createServer((req, res) => {
 
   // POST /submit — save order
   if (pathname === "/submit" && method === "POST") {
+    const MAX_BODY = 2 * 1024 * 1024; // 2 MB
     let body = "";
-    req.on("data", (chunk) => (body += chunk));
+    let tooBig = false;
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY) { tooBig = true; req.destroy(); }
+    });
     req.on("end", () => {
+      if (tooBig) {
+        res.writeHead(413, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(pageIndex("Upload too large. Logo must be under 500 KB.", {}, user));
+        return;
+      }
       const data = qs.parse(body);
       const trim = (k) => (data[k] || "").trim();
 
@@ -896,6 +941,8 @@ const server = http.createServer((req, res) => {
       const phone_number          = trim("phone_number");
       const name                  = trim("name");
       const brand_name            = trim("brand_name");
+      const brand_logo_raw        = (data.brand_logo || "").trim();
+      const brand_logo            = brand_logo_raw.startsWith("data:image/") ? brand_logo_raw : "";
       const call_recording        = trim("call_recording");
 
       if (!call_sid || !lead_id) {
@@ -907,13 +954,13 @@ const server = http.createServer((req, res) => {
       try {
         stmtInsert.run(
           call_sid, lead_id, date_type, order_date, delivery_failure_date,
-          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, brand_logo, call_recording
         );
       } catch (e) {
         // Duplicate — update instead
         stmtUpdate.run(
           date_type, order_date, delivery_failure_date,
-          call_date, call_request_date, last_request_date, phone_number, name, brand_name, call_recording,
+          call_date, call_request_date, last_request_date, phone_number, name, brand_name, brand_logo, call_recording,
           lead_id, call_sid
         );
       }
