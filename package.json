@@ -1,10 +1,12 @@
 {
   "name": "order-management-system",
   "version": "1.0.0",
-  "description": "Order Management System",
+  "description": "Order Management System + RPS Arena Multiplayer Game",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "game": "node game.js",
+    "start:all": "node app.js & node game.js"
   },
   "engines": {
     "node": ">=22.0.0"
